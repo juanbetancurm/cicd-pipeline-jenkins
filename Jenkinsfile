@@ -1,9 +1,5 @@
 pipeline {
-    agent any
-
-    tools {
-        nodejs 'node'
-    }
+    agent none
 
     environment {
         APP_PORT = "${env.BRANCH_NAME == 'main' ? '3000' : '3001'}"
@@ -14,36 +10,58 @@ pipeline {
 
     stages {
         stage('Checkout') {
+            agent any
             steps {
                 checkout scm
+                stash name: 'source', includes: '**'
             }
         }
 
         stage('Build') {
+            agent {
+                docker {
+                    image 'node:7.8.0'
+                    args '-v /tmp/npm-cache:/root/.npm'
+                }
+            }
             steps {
+                unstash 'source'
                 sh 'npm install'
             }
         }
 
         stage('Test') {
+            agent {
+                docker {
+                    image 'node:7.8.0'
+                    args '-v /tmp/npm-cache:/root/.npm'
+                }
+            }
             steps {
+                unstash 'source'
+                sh 'npm install'
                 sh 'CI=true npm test'
             }
         }
 
         stage('Lint Dockerfile') {
+            agent any
             steps {
+                unstash 'source'
                 sh 'hadolint Dockerfile || true'
             }
         }
 
         stage('Build Docker Image') {
+            agent any
             steps {
+                unstash 'source'
                 sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
             }
         }
 
         stage('Scan Docker Image for Vulnerabilities') {
+            agent any
             steps {
                 script {
                     def vulnerabilities = sh(
@@ -56,6 +74,7 @@ pipeline {
         }
 
         stage('Push to Docker Hub') {
+            agent any
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: 'dockerhub-creds',
@@ -73,6 +92,7 @@ pipeline {
         }
 
         stage('Deploy') {
+            agent any
             steps {
                 sh """
                     docker rm -f ${IMAGE_NAME} || true
@@ -82,6 +102,7 @@ pipeline {
         }
 
         stage('Trigger Deploy Pipeline') {
+            agent any
             steps {
                 script {
                     def deployJob = env.BRANCH_NAME == 'main' ? 'Deploy_to_main' : 'Deploy_to_dev'
