@@ -31,9 +31,27 @@ pipeline {
             }
         }
 
+        stage('Lint Dockerfile') {
+            steps {
+                sh 'hadolint Dockerfile || true'
+            }
+        }
+
         stage('Build Docker Image') {
             steps {
                 sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
+            }
+        }
+
+        stage('Scan Docker Image for Vulnerabilities') {
+            steps {
+                script {
+                    def vulnerabilities = sh(
+                        script: "trivy image --exit-code 0 --severity HIGH,MEDIUM,LOW --no-progress ${IMAGE_NAME}:${IMAGE_TAG}",
+                        returnStdout: true
+                    ).trim()
+                    echo "Vulnerability Report:\n${vulnerabilities}"
+                }
             }
         }
 
